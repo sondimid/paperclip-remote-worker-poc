@@ -1,0 +1,15 @@
+worker.example.com {
+	@worker {
+		method GET
+		path /worker/connect
+		header Upgrade websocket
+	}
+
+	handle @worker {
+		reverse_proxy 127.0.0.1:3113
+	}
+
+	handle {
+		respond 404
+	}
+}
