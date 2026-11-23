@@ -25,7 +25,8 @@ function threadStartDiagnostic(error) {
   return ` [rpc_code=${code}; hints=${hints.join(',') || 'unclassified'}]`;
 }
 
-export async function openCodexSession({ workspaceProfile, threadId, onEvent, diagnoseThreadStart = false }) {
+export async function openCodexSession({ workspaceProfile, threadId, onEvent, diagnoseThreadStart = false, signal }) {
+  signal?.throwIfAborted();
   const { executable, cwd, codexHome, environment = {}, fixtureArgs, permissionProfile } = workspaceProfile;
   if (![executable, cwd, codexHome].every(value => typeof value === 'string' && isAbsolute(value))
       || (threadId != null && !providerId(threadId)) || (!fixtureArgs && permissionProfile !== 'paperclip-fixture')) {
@@ -130,8 +131,11 @@ export async function openCodexSession({ workspaceProfile, threadId, onEvent, di
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       await once(child, 'exit', { signal: AbortSignal.timeout(1000) }).catch(() => {});
     }
+    return !child.pid || child.exitCode !== null || child.signalCode !== null;
   }
+  signal?.addEventListener('abort', fail, { once: true });
   try {
+    signal?.throwIfAborted();
     await rpc('initialize', {
       clientInfo: { name: 'paperclip_interactive_lab', title: 'Paperclip Interactive Lab', version: '1.0.0' },
       ...(permissionProfile && { capabilities: { experimentalApi: true } }),
@@ -139,19 +143,32 @@ export async function openCodexSession({ workspaceProfile, threadId, onEvent, di
     write({ method: 'initialized', params: {} });
     const policy = { cwd, approvalPolicy: 'never', ...(permissionProfile
       ? { permissions: permissionProfile } : { sandbox: 'read-only' }) };
-    const result = await (threadId ? rpc('thread/resume', { threadId, excludeTurns: true, ...policy }) : rpc('thread/start', policy));
-    resolvedThread = result?.thread?.id;
-    if (!providerId(resolvedThread) || (threadId && resolvedThread !== threadId)) throw new Error('App Server thread mismatch');
+    let result;
+    try {
+      result = await (threadId ? rpc('thread/resume', { threadId, excludeTurns: true, ...policy }) : rpc('thread/start', policy));
+      resolvedThread = result?.thread?.id;
+      if (!providerId(resolvedThread) || (threadId && resolvedThread !== threadId)) throw new Error('App Server thread mismatch');
+    } catch (error) {
+      if (threadId) error.code = 'codex_resume_unavailable';
+      throw error;
+    }
     if (permissionProfile) {
       if (result?.activePermissionProfile?.id !== permissionProfile || result.activePermissionProfile.extends !== null
           || result.approvalPolicy !== 'never') throw new Error('App Server thread policy mismatch');
       await verifyCodexLabSandbox(rpc, workspaceProfile);
       const { account } = await rpc('account/read', { refreshToken: false });
-      if (account?.type !== 'chatgpt') throw new Error('Dedicated Codex lab sign-in not confirmed');
+      if (account?.type !== 'chatgpt') {
+        throw Object.assign(new Error('Dedicated Codex lab sign-in not confirmed'), { code: 'codex_auth_unverified' });
+      }
     }
+    signal?.throwIfAborted();
   } catch (error) {
-    await close();
+    if (!await close() && signal) {
+      throw Object.assign(new Error('App Server exit not confirmed'), { code: 'codex_cleanup_unverified' });
+    }
     throw error;
+  } finally {
+    signal?.removeEventListener('abort', fail);
   }
   return {
     get threadId() { return resolvedThread; },

@@ -10,8 +10,14 @@ import { capabilityStates, failureReasons, finalBytes, finalPartBytes, frameByte
 import { cliSessionId } from './cli-process.mjs';
 import * as codexCli from './codex-cli.mjs';
 import * as claudeCli from './claude-cli.mjs';
+import { createCodexAppServerAdapter } from './codex-app-server.mjs';
 
 const cliAdapters = { codex: codexCli, claude: claudeCli };
+export function selectCliAdapters(backend = 'exec') {
+  if (backend === 'exec') return cliAdapters;
+  if (backend === 'app-server') return { ...cliAdapters, codex: createCodexAppServerAdapter() };
+  throw new Error('INTERACTIVE_CODEX_BACKEND must be exec or app-server');
+}
 const sameAttempt = (a, b) => a?.runId === b?.runId && a?.attemptId === b?.attemptId;
 const identity = ({ runId, attemptId }) => ({ runId, attemptId });
 const safeEndpoint = value => {
@@ -350,13 +356,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       }
       const controller = new AbortController();
       for (const event of ['SIGINT', 'SIGTERM']) process.once(event, () => controller.abort());
-      let cliProfiles;
+      let cliProfiles, adapters;
       if (cliMode) {
+        const backend = process.env.INTERACTIVE_CODEX_BACKEND;
+        adapters = selectCliAdapters(backend);
         const profile = prefix => ({ executable: process.env[`${prefix}_EXECUTABLE`], cwd: process.env.INTERACTIVE_CLI_CWD,
           profileDir: process.env[`${prefix}_PROFILE_DIR`], policyExecutable: process.env.INTERACTIVE_CLI_POLICY_EXECUTABLE });
-        cliProfiles = { codex: profile('INTERACTIVE_CODEX'), claude: profile('INTERACTIVE_CLAUDE') };
+        cliProfiles = { codex: backend === 'app-server' ? readCodexLabProfile : profile('INTERACTIVE_CODEX'),
+          claude: profile('INTERACTIVE_CLAUDE') };
       }
-      await runInteractiveWorker({ brokerUrl: endpoint, workerToken, tlsCa, cliProfiles,
+      await runInteractiveWorker({ brokerUrl: endpoint, workerToken, tlsCa, cliProfiles, adapters,
         workspaceProfile: cliMode ? binding : { ...readCodexLabProfile(), ...binding },
         signal: controller.signal, log: record => console.log(JSON.stringify(record)) });
     }

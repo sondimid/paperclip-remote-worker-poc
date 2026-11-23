@@ -103,7 +103,14 @@ Paperclip tự cấp run JWT cho Bridge; không đưa JWT tĩnh, operator token 
 node --env-file=.worker.cli.env worker.mjs --cli-wss
 ```
 
-3. **`worker_ready` = WSS đã kết nối, chưa có nghĩa CLI nhận việc.** Có thể bỏ trống cấu hình CLI để chỉ thử handshake. `unsupported`, `policy_unverified` và `auth_unverified` không được giao lượt. Để nhận việc, dùng binary tuyệt đối (native `.exe` trên Windows), workspace test, profile riêng đã đăng nhập và verifier confinement độc lập do operator cung cấp. Không có verifier thật đi kèm repo; không dùng stub để bật dispatch.
+3. **`worker_ready` = WSS đã kết nối, chưa có nghĩa CLI nhận việc.** Có thể bỏ trống cấu hình CLI để chỉ thử handshake. `unsupported`, `policy_unverified` và `auth_unverified` không được giao lượt. Với backend CLI mặc định, dùng binary tuyệt đối (native `.exe` trên Windows), workspace test và verifier confinement độc lập do operator cung cấp. Không dùng stub để bật dispatch. Lab Codex App Server bên dưới có phép kiểm riêng.
+4. **Codex có thể dùng profile đã đăng nhập.** Đặt `INTERACTIVE_CODEX_PROFILE_DIR` thành đường dẫn tuyệt đối tới `CODEX_HOME` của phiên Codex đang dùng (thường là thư mục `.codex` dưới thư mục người dùng). Không để trống hoặc chép credential. Verifier vẫn phải kiểm đúng profile được chọn cùng với sandbox, hooks/MCP và quyền truy cập. Worker nạp `CODEX_HOME` từ đường dẫn này nhưng không kế thừa toàn bộ môi trường terminal; chỉ coi auth đã qua khi probe của worker xác nhận. Codex có thể ghi session mới vào profile này. Cấu hình Claude Code không thay đổi.
+
+**Lab Windows 11 với Codex App Server:** Đặt `INTERACTIVE_CODEX_BACKEND=app-server` trong `.worker.cli.env` và nạp thêm `.codex-chat.env` của lab. File thứ hai chứa `INTERACTIVE_CODEX_EXE`, `INTERACTIVE_CODEX_ROOT`, `INTERACTIVE_CODEX_WORKSPACE` của profile `paperclip-fixture` đã được chuẩn bị và đăng nhập riêng. Không trỏ tới profile mặc định. Backend này kiểm quyền đọc/ghi/mạng qua chính App Server trước mỗi lượt; nó không dùng verifier của `exec`. Không đổi cách chạy Claude, wire version, Bridge hay Broker.
+
+```powershell
+node --env-file=.worker.cli.env --env-file=.codex-chat.env worker.mjs --cli-wss
+```
 
 ### Khi có CLI `ready`
 
@@ -118,5 +125,5 @@ Gán agent vào task test và giữ `backlog`. Trong Chat, gửi `/codex …` ho
 ## Giới hạn
 
 - Một worker, một task, một workspace, một lượt đồng thời; Broker giữ dữ liệu trong RAM. Restart giữa lượt có thể thành `unknown`, không tự chạy lại.
-- PoC chỉ được kiểm bằng fixture V2 và TLS loopback. Chưa nghiệm thu model thật trên Win10/macOS, quyền attachment bằng JWT thật hoặc UI khi run đang hoạt động. Cờ read-only/no-tools không thay sandbox hệ điều hành.
+- **Lab V2 Windows 11 (23/11/2026):** qua WSS loopback, Codex App Server `0.166.0` nhận một tin từ task Chat và trả đáp án đúng theo lịch sử native. Khi chạy lại, UI xác nhận gửi thành công nhưng Codex trả `usage_limit_exceeded` ở lượt đầu; không tự gửi lại hay gửi lượt hai. Preflight `ready` kiểm đăng nhập và sandbox, không kiểm quota model. Chưa xác nhận reply lưu về Paperclip, resume hai lượt V2, Codex trên Win10/macOS, Claude Code thật, attachment bằng JWT thật hoặc live delta trong Chat. Cờ read-only/no-tools không thay sandbox hệ điều hành.
 - Không bật Internet ingress, cho chạy model hoặc dùng workspace thật chỉ để thử fixture. Broker và operator là các bên được tin cậy; không dùng PoC này như nền tảng multi-tenant.
