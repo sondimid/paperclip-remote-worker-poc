@@ -20,7 +20,46 @@ npm --prefix interactive test
 
 Fixture kiểm hai adapter, resume, đổi provider, reconnect/mất ACK, phản hồi Unicode dài và việc lưu một reply kèm attachment vào Paperclip mock. Đường V1 App Server được giữ để chạy hồi quy. **Không cần token, tài khoản hay Paperclip đang chạy để chạy bộ test.**
 
-## Kết nối thử giữa hai máy
+## Chỉ mở terminal Codex / Claude Code từ server
+
+Chế độ này **độc lập với Paperclip Chat**: server chọn CLI và alias thư mục → Broker gửi yêu cầu qua WSS → PC Windows mở CLI tương tác trong phiên desktop đang đăng nhập. Bạn gõ trực tiếp trên PC. Không chuyển màn hình, prompt, phím gõ hay output về server. Kết nối hoặc reconnect không tự mở terminal.
+
+**Server:** Dùng Node.js 22+ và cài dependency như trên. Từ `interactive/`, sao chép [mẫu Broker](interactive/.terminal-broker.env.example) và [mẫu operator](interactive/.terminal-operator.env.example) thành `.terminal-broker.env` và `.terminal-operator.env`. Tạo hai token **riêng**, ngẫu nhiên (ít nhất 32 byte mỗi token); chỉ chuyển worker token sang PC qua kênh riêng. Nếu đổi port `3116`, cập nhật URL operator và upstream Caddy tương ứng. Khởi động Broker:
+
+```powershell
+node --env-file=.terminal-broker.env terminal/broker.mjs
+```
+
+Dùng [mẫu Caddy](interactive/Caddyfile.wss.example) với **hostname riêng**, chứng chỉ TLS hợp lệ và upstream `127.0.0.1:3116`. Mẫu chỉ proxy `GET /worker/connect` có WebSocket Upgrade; giữ các route `/terminal/*` ở loopback, không publish chúng. Không cần mở cổng inbound trên PC. Chỉ cấp WSS cho PC được phép và dừng worker khi không còn cần mở CLI từ xa.
+
+**PC Windows:** Từ `interactive/`, sao chép [mẫu worker](interactive/.terminal-worker.env.example) thành `.terminal-worker.env`. Đặt WSS URL, worker ID và worker token khớp Broker. Điền đường dẫn tuyệt đối tới ít nhất một native `.exe` (không dùng `.cmd`) và các thư mục local tồn tại, đáng tin cậy. `TERMINAL_WORKSPACES` là JSON `alias → đường dẫn`, ví dụ `{"scratch":"C:/work/scratch"}`; server chỉ thấy alias. Worker không thay profile, quyền hay sandbox của CLI. Nếu dùng CA riêng, cấu hình file CA đã xác minh; không tắt TLS verification. Chạy trong terminal của **tài khoản đang đăng nhập desktop**, không phải Windows Service:
+
+```powershell
+node --env-file=.terminal-worker.env terminal/worker.mjs
+```
+
+**Chọn trên server:** `list` hiện CLI và alias đã cấu hình, không xác nhận login hay GUI. `open` in UUID để tra lại; chỉ chạy khi bạn muốn mở thêm một cửa sổ:
+
+```powershell
+node --env-file=.terminal-operator.env terminal/operator.mjs list
+```
+
+```powershell
+node --env-file=.terminal-operator.env terminal/operator.mjs open codex scratch
+```
+
+Dùng `claude` thay `codex` nếu đã cấu hình. Thay `REQUEST-UUID` bằng ID lệnh `open` đã in:
+
+```powershell
+node --env-file=.terminal-operator.env terminal/operator.mjs status 'REQUEST-UUID'
+```
+
+- `pending`: đang chờ PC trả kết quả. `spawned`: Windows báo tạo tiến trình, **không** xác nhận cửa sổ hiển thị, TUI hay đăng nhập. `failed`: worker từ chối hoặc launcher báo lỗi (ví dụ thư mục đã mất hay đổi đích); không tự chọn CWD khác.
+- `unknown`: không xác nhận được kết quả. Kiểm PC trước khi gửi `open` mới. Không queue offline hoặc tự gửi lại sau reconnect; lưu ID tối đa 128 yêu cầu trong RAM, 5 phút từ kết quả, không giữ qua restart.
+- PoC hỗ trợ một worker Windows và một lần mở đang chờ. Không hỗ trợ điều khiển CLI từ xa hay launcher macOS trong chế độ này.
+- **Smoke Windows 11 (23/11/2026):** Broker và worker chạy thành hai tiến trình, kết nối WSS qua TLS loopback. `open codex lab` mở Codex native; terminal hiển thị đúng thư mục lab riêng và Codex trả lời đúng một prompt tính nhẩm (`922143`). Prompt được nhập tại console local, không gửi qua Broker. Chưa nghiệm thu Claude Code thật, Caddy hoặc máy thứ hai cho chế độ này.
+
+## Kết nối thử giữa hai máy — Paperclip Chat V2
 
 ### Server
 
