@@ -96,7 +96,9 @@ Paperclip tự cấp run JWT cho Bridge; không đưa JWT tĩnh, operator token 
 
 ### PC worker
 
-1. Clone repo, cài dependency như trên, rồi vào `interactive/`. Tạo `.worker.cli.env` từ [mẫu worker](interactive/.worker.cli.env.example). Điền WSS URL, worker token và JSON `INTERACTIVE_WORKSPACE_PROFILE` gồm đúng `issueId` và `workspaceId: "interactive-sample"`. Chỉ cấu hình CA nếu server dùng CA riêng đã được xác minh. Không tắt xác minh TLS.
+**Windows:** Copy [prompt setup worker](interactive/WORKER-SETUP-PROMPT.md) sau khi điền SHA public chứa [`setup-worker.ps1`](interactive/setup-worker.ps1). Script tải đúng commit, cài `ws` từ lockfile vào `interactive/`, không chạm thư mục có sẵn và không tự chạy worker. PC nhận `.worker.cli.env` qua kênh riêng và dùng CLI/profile/verifier được cấp; không cần tài khoản Paperclip/Board. Process Bridge và token Bridge/operator chỉ ở phía server.
+
+1. Dùng script setup Windows hoặc clone repo và cài dependency như trên, rồi vào `interactive/`. Nhận `.worker.cli.env` qua kênh riêng. Nếu tự vận hành cả server, tạo file từ [mẫu worker](interactive/.worker.cli.env.example) với WSS URL, worker token và JSON `INTERACTIVE_WORKSPACE_PROFILE` gồm đúng `issueId` và `workspaceId: "interactive-sample"`. Chỉ cấu hình CA nếu server dùng CA riêng đã được xác minh. Không tắt xác minh TLS.
 2. Chạy:
 
 ```powershell
